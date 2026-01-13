@@ -162,11 +162,11 @@
                         "storageSize": 16384
                       }
                     },
-                    "dockerfile": {
-                      "buildEngine": "buildkit",
-                      "dockerFilePath": "/Dockerfile",
-                      "dockerWorkDir": "/",
-                      "useCache": false
+                    "buildpack": {
+                      "builder": "HEROKU_24",
+                      "buildpackLocators": [],
+                      "useCache": true,
+                      "buildContext": "/"
                     }
                   },
                   "name": "builder",
@@ -301,8 +301,6 @@
       ]
     }
   },
-  "name": "Vendure",
-  "description": "Vendure is a modern, open-source composable commerce platform",
   "options": {
     "autorun": true,
     "concurrencyPolicy": "allow"
