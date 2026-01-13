@@ -175,8 +175,9 @@
                     "buildPlan": "nf-compute-200-4"
                   },
                   "vcsData": {
-                    "projectUrl": "https://github.com/vendure-ecommerce/one-click-deploy",
-                    "projectType": "github"
+                    "projectUrl": "https://github.com/Vita-strategies/vendure",
+                    "projectType": "github",
+                    "accountLogin": "Vita-strategies"
                   },
                   "disabledCI": false,
                   "buildArguments": {},
