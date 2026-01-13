@@ -1,0 +1,318 @@
+{
+  "apiVersion": "v1.2",
+  "spec": {
+    "kind": "Workflow",
+    "spec": {
+      "type": "sequential",
+      "steps": [
+        {
+          "kind": "Project",
+          "ref": "project",
+          "spec": {
+            "name": "Vendure",
+            "description": "Vendure is a modern, open-source composable commerce platform",
+            "region": "europe-west",
+            "color": "#17b9ff"
+          }
+        },
+        {
+          "kind": "Workflow",
+          "spec": {
+            "type": "sequential",
+            "context": {
+              "projectId": "${refs.project.id}"
+            },
+            "steps": [
+              {
+                "kind": "Workflow",
+                "spec": {
+                  "type": "parallel",
+                  "steps": [
+                    {
+                      "kind": "Addon",
+                      "ref": "database",
+                      "spec": {
+                        "name": "database",
+                        "type": "postgresql",
+                        "version": "14-latest",
+                        "billing": {
+                          "deploymentPlan": "nf-compute-20",
+                          "storageClass": "nvme",
+                          "storage": 6144,
+                          "replicas": 1
+                        },
+                        "tlsEnabled": false,
+                        "externalAccessEnabled": false,
+                        "ipPolicies": []
+                      }
+                    },
+                    {
+                      "kind": "Addon",
+                      "ref": "storage",
+                      "spec": {
+                        "name": "minio",
+                        "type": "minio",
+                        "version": "20-latest",
+                        "billing": {
+                          "deploymentPlan": "nf-compute-20",
+                          "storageClass": "nvme",
+                          "storage": 6144,
+                          "replicas": 1
+                        },
+                        "tlsEnabled": true,
+                        "externalAccessEnabled": false,
+                        "ipPolicies": [],
+                        "typeSpecificSettings": {},
+                        "backupSchedules": []
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "SecretGroup",
+                "spec": {
+                  "secretType": "environment-arguments",
+                  "priority": 10,
+                  "name": "secrets",
+                  "secrets": {
+                    "variables": {
+                      "APP_ENV": "production",
+                      "COOKIE_SECRET": "${fn.randomSecret(32)}",
+                      "SUPERADMIN_USERNAME": "${args.SUPERADMIN_USERNAME}",
+                      "SUPERADMIN_PASSWORD": "${args.SUPERADMIN_PASSWORD}",
+                      "DB_SCHEMA": "public"
+                    },
+                    "files": {}
+                  },
+                  "addonDependencies": [
+                    {
+                      "addonId": "${refs.database.id}",
+                      "keys": [
+                        {
+                          "keyName": "HOST",
+                          "aliases": [
+                            "DB_HOST"
+                          ]
+                        },
+                        {
+                          "keyName": "PORT",
+                          "aliases": [
+                            "DB_PORT"
+                          ]
+                        },
+                        {
+                          "keyName": "DATABASE",
+                          "aliases": [
+                            "DB_NAME"
+                          ]
+                        },
+                        {
+                          "keyName": "USERNAME",
+                          "aliases": [
+                            "DB_USERNAME"
+                          ]
+                        },
+                        {
+                          "keyName": "PASSWORD",
+                          "aliases": [
+                            "DB_PASSWORD"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "addonId": "${refs.storage.id}",
+                      "keys": [
+                        {
+                          "keyName": "MINIO_ENDPOINT",
+                          "aliases": [
+                            "MINIO_ENDPOINT"
+                          ]
+                        },
+                        {
+                          "keyName": "ACCESS_KEY",
+                          "aliases": [
+                            "MINIO_ACCESS_KEY"
+                          ]
+                        },
+                        {
+                          "keyName": "SECRET_KEY",
+                          "aliases": [
+                            "MINIO_SECRET_KEY"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "restrictions": {
+                    "restricted": false,
+                    "nfObjects": [],
+                    "tags": []
+                  }
+                }
+              },
+              {
+                "kind": "BuildService",
+                "ref": "builder",
+                "spec": {
+                  "buildSettings": {
+                    "storage": {
+                      "ephemeralStorage": {
+                        "storageSize": 16384
+                      }
+                    },
+                    "dockerfile": {
+                      "buildEngine": "buildkit",
+                      "dockerFilePath": "/Dockerfile",
+                      "dockerWorkDir": "/",
+                      "useCache": false
+                    }
+                  },
+                  "name": "builder",
+                  "billing": {
+                    "deploymentPlan": "nf-compute-10",
+                    "buildPlan": "nf-compute-200-4"
+                  },
+                  "vcsData": {
+                    "projectUrl": "https://github.com/vendure-ecommerce/one-click-deploy",
+                    "projectType": "github"
+                  },
+                  "disabledCI": false,
+                  "buildArguments": {},
+                  "buildFiles": {},
+                  "dockerSecretMounts": {},
+                  "infrastructure": {
+                    "architecture": "x86"
+                  }
+                }
+              },
+              {
+                "kind": "Build",
+                "spec": {
+                  "reuseExistingBuilds": true,
+                  "buildRuleFallThroughHandling": "fail",
+                  "id": "${refs.builder.id}",
+                  "type": "service",
+                  "branch": "master",
+                  "buildOverrides": {
+                    "buildArguments": {},
+                    "buildFiles": {}
+                  },
+                  "sha": "57acc307dd1d1203dee2993f22a149b201aef322"
+                },
+                "condition": "success",
+                "ref": "build"
+              },
+              {
+                "kind": "Workflow",
+                "spec": {
+                  "type": "parallel",
+                  "steps": [
+                    {
+                      "kind": "DeploymentService",
+                      "spec": {
+                        "deployment": {
+                          "instances": 1,
+                          "storage": {
+                            "ephemeralStorage": {
+                              "storageSize": 1024
+                            },
+                            "shmSize": 64
+                          },
+                          "docker": {
+                            "configType": "customCommand",
+                            "customCommand": "yarn start:server"
+                          },
+                          "internal": {
+                            "id": "${refs.build.nfObjectId}",
+                            "branch": "${refs.build.branch}"
+                          }
+                        },
+                        "loadBalancing": {
+                          "mode": "leastConnection"
+                        },
+                        "name": "server",
+                        "billing": {
+                          "deploymentPlan": "nf-compute-20"
+                        },
+                        "ports": [
+                          {
+                            "name": "app",
+                            "internalPort": 3000,
+                            "public": true,
+                            "protocol": "HTTP",
+                            "security": {
+                              "credentials": [],
+                              "policies": [],
+                              "securePathConfiguration": {
+                                "rules": []
+                              }
+                            },
+                            "domains": [],
+                            "disableNfDomain": false
+                          }
+                        ],
+                        "runtimeEnvironment": {},
+                        "runtimeFiles": {}
+                      },
+                      "ref": "server"
+                    },
+                    {
+                      "kind": "DeploymentService",
+                      "spec": {
+                        "deployment": {
+                          "instances": 1,
+                          "storage": {
+                            "ephemeralStorage": {
+                              "storageSize": 1024
+                            },
+                            "shmSize": 64
+                          },
+                          "docker": {
+                            "configType": "customCommand",
+                            "customCommand": "yarn start:worker"
+                          },
+                          "internal": {
+                            "id": "${refs.build.nfObjectId}",
+                            "branch": "${refs.build.branch}",
+                            "buildSHA": "latest"
+                          }
+                        },
+                        "loadBalancing": {
+                          "mode": "leastConnection"
+                        },
+                        "name": "worker",
+                        "billing": {
+                          "deploymentPlan": "nf-compute-10"
+                        },
+                        "ports": [],
+                        "runtimeEnvironment": {},
+                        "runtimeFiles": {}
+                      },
+                      "ref": "worker"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "name": "Vendure",
+  "description": "Vendure is a modern, open-source composable commerce platform",
+  "options": {
+    "autorun": true,
+    "concurrencyPolicy": "allow"
+  },
+  "gitops": {
+    "repoUrl": "https://github.com/Vita-strategies/vendure",
+    "vcsService": "github",
+    "accountLogin": "Vita-strategies",
+    "branch": "master",
+    "filePath": "/northflank.json"
+  },
+  "$schema": "https://api.northflank.com/v1/schemas/template"
+}
